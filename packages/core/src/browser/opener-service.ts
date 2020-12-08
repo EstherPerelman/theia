@@ -16,7 +16,7 @@
 
 import { named, injectable, inject } from 'inversify';
 import URI from '../common/uri';
-import { ContributionProvider, Prioritizeable, MaybePromise } from '../common';
+import { ContributionProvider, Prioritizeable, MaybePromise, Emitter, Event, Disposable } from '../common';
 
 export interface OpenerOptions {
 }
@@ -75,6 +75,10 @@ export interface OpenerService {
      * Reject if such does not exist.
      */
     getOpener(uri: URI, options?: OpenerOptions): Promise<OpenHandler>;
+    /**
+     * Event that fires when a new opener is added or remove
+     */
+    onOpenersStateChanged?: Event<void>;
 }
 
 export async function open(openerService: OpenerService, uri: URI, options?: OpenerOptions): Promise<object | undefined> {
@@ -85,10 +89,28 @@ export async function open(openerService: OpenerService, uri: URI, options?: Ope
 @injectable()
 export class DefaultOpenerService implements OpenerService {
 
+    protected readonly additionalHandlers: OpenHandler[] = [];
+
+    protected readonly onOpenersStateChangedEmitter = new Emitter<void>();
+    readonly onOpenersStateChanged = this.onOpenersStateChangedEmitter.event;
+
     constructor(
         @inject(ContributionProvider) @named(OpenHandler)
         protected readonly handlersProvider: ContributionProvider<OpenHandler>
     ) { }
+
+    public addHandler(openHandler: OpenHandler): Disposable {
+        this.additionalHandlers.push(openHandler);
+        this.onOpenersStateChangedEmitter.fire();
+
+        return Disposable.create(() => {
+            this.additionalHandlers.splice(
+                this.additionalHandlers.indexOf(openHandler),
+                1
+            );
+            this.onOpenersStateChangedEmitter.fire();
+        });
+    }
 
     async getOpener(uri: URI, options?: OpenerOptions): Promise<OpenHandler> {
         const handlers = await this.prioritize(uri, options);
@@ -114,7 +136,10 @@ export class DefaultOpenerService implements OpenerService {
     }
 
     protected getHandlers(): OpenHandler[] {
-        return this.handlersProvider.getContributions();
+        return [
+            ...this.handlersProvider.getContributions(),
+            ...this.additionalHandlers
+        ];
     }
 
 }

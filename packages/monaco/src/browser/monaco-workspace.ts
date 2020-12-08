@@ -29,6 +29,8 @@ import { ProblemManager } from '@theia/markers/lib/browser';
 import { MaybePromise } from '@theia/core/lib/common/types';
 import { FileService } from '@theia/filesystem/lib/browser/file-service';
 import { FileSystemProviderCapabilities } from '@theia/filesystem/lib/common/files';
+import { ApplicationShell, Widget } from '@theia/core/lib/browser';
+import { Reference } from '@theia/core/lib/common';
 
 export namespace WorkspaceFileEdit {
     export function is(arg: Edit): arg is monaco.languages.WorkspaceFileEdit {
@@ -46,6 +48,17 @@ export namespace WorkspaceTextEdit {
             && arg.edit !== null
             && typeof arg.edit === 'object';
     }
+}
+
+export namespace CustomEditorWidget {
+    export function is(arg: Widget | undefined): arg is CustomEditorWidget {
+        return !!arg && 'modelRef' in arg;
+    }
+}
+
+export interface CustomEditorWidget extends Widget {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    readonly modelRef: Reference<any>;
 }
 
 export type Edit = monaco.languages.WorkspaceFileEdit | monaco.languages.WorkspaceTextEdit;
@@ -98,6 +111,9 @@ export class MonacoWorkspace {
 
     @inject(ProblemManager)
     protected readonly problems: ProblemManager;
+
+    @inject(ApplicationShell)
+    protected readonly shell: ApplicationShell;
 
     @postConstruct()
     protected init(): void {
@@ -162,7 +178,7 @@ export class MonacoWorkspace {
         if (this.suppressedOpenIfDirty.indexOf(model) !== -1) {
             return;
         }
-        if (model.dirty && MonacoEditor.findByDocument(this.editorManager, model).length === 0) {
+        if (model.dirty && MonacoEditor.findByDocument(this.editorManager, model).length === 0 && !CustomEditorWidget.is(this.shell.activeWidget)) {
             // create a new reference to make sure the model is not disposed before it is
             // acquired by the editor, thus losing the changes that made it dirty.
             this.textModelService.createModelReference(model.textEditorModel.uri).then(ref => {

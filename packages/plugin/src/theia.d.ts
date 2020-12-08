@@ -3460,6 +3460,257 @@ declare module '@theia/plugin' {
     }
 
     /**
+     * Provider for text based custom editors.
+     *
+     * Text based custom editors use a [`TextDocument`](#TextDocument) as their data model. This considerably simplifies
+     * implementing a custom editor as it allows Theia to handle many common operations such as
+     * undo and backup. The provider is responsible for synchronizing text changes between the webview and the `TextDocument`.
+    */
+    export interface CustomTextEditorProvider {
+
+        /**
+         * Resolve a custom editor for a given text resource.
+         *
+         * This is called when a user first opens a resource for a `CustomTextEditorProvider`, or if they reopen an
+         * existing editor using this `CustomTextEditorProvider`.
+         *
+         *
+         * @param document Document for the resource to resolve.
+         *
+         * @param webviewPanel The webview panel used to display the editor UI for this resource.
+         *
+         * During resolve, the provider must fill in the initial html for the content webview panel and hook up all
+         * the event listeners on it that it is interested in. The provider can also hold onto the `WebviewPanel` to
+         * use later for example in a command. See [`WebviewPanel`](#WebviewPanel) for additional details.
+         *
+         * @param token A cancellation token that indicates the result is no longer needed.
+         *
+         * @return Thenable indicating that the custom editor has been resolved.
+         */
+        resolveCustomTextEditor(document: TextDocument, webviewPanel: WebviewPanel, token: CancellationToken): Thenable<void> | void;
+    }
+
+    /**
+     * Represents a custom document used by a [`CustomEditorProvider`](#CustomEditorProvider).
+     *
+     * Custom documents are only used within a given `CustomEditorProvider`. The lifecycle of a `CustomDocument` is
+     * managed by Theia. When no more references remain to a `CustomDocument`, it is disposed of.
+     */
+    interface CustomDocument {
+        /**
+         * The associated uri for this document.
+         */
+        readonly uri: Uri;
+
+        /**
+         * Dispose of the custom document.
+         *
+         * This is invoked by Theia when there are no more references to a given `CustomDocument` (for example when
+         * all editors associated with the document have been closed.)
+         */
+        dispose(): void;
+    }
+
+    /**
+ * Event triggered by extensions to signal that an edit has occurred on an [`CustomDocument`](#CustomDocument).
+ *
+ * @see [`CustomDocumentProvider.onDidChangeCustomDocument`](#CustomDocumentProvider.onDidChangeCustomDocument).
+ */
+    interface CustomDocumentEditEvent<T extends CustomDocument = CustomDocument> {
+
+        /**
+         * The document that the edit is for.
+         */
+        readonly document: T;
+
+        /**
+         * Undo the edit operation.
+         *
+         * This is invoked by Theia when the user undoes this edit. To implement `undo`, your
+         * extension should restore the document and editor to the state they were in just before this
+         * edit was added to Theia's internal edit stack by `onDidChangeCustomDocument`.
+         */
+        undo(): Thenable<void> | void;
+
+        /**
+         * Redo the edit operation.
+         *
+         * This is invoked by Theia when the user redoes this edit. To implement `redo`, your
+         * extension should restore the document and editor to the state they were in just after this
+         * edit was added to Theia's internal edit stack by `onDidChangeCustomDocument`.
+         */
+        redo(): Thenable<void> | void;
+
+        /**
+         * Display name describing the edit.
+         *
+         * This will be shown to users in the UI for undo/redo operations.
+         */
+        readonly label?: string;
+    }
+
+    /**
+     * Event triggered by extensions to signal to Theia that the content of a [`CustomDocument`](#CustomDocument)
+     * has changed.
+     *
+     * @see [`CustomDocumentProvider.onDidChangeCustomDocument`](#CustomDocumentProvider.onDidChangeCustomDocument).
+     */
+    interface CustomDocumentContentChangeEvent<T extends CustomDocument = CustomDocument> {
+        /**
+         * The document that the change is for.
+         */
+        readonly document: T;
+    }
+
+    /**
+     * Additional information about the opening custom document.
+     */
+    interface CustomDocumentOpenContext {
+        /**
+         * The id of the backup to restore the document from or `undefined` if there is no backup.
+         *
+         * If this is provided, your extension should restore the editor from the backup instead of reading the file
+         * from the user's workspace.
+         */
+        readonly backupId?: string;
+    }
+
+    /**
+     * Provider for readonly custom editors that use a custom document model.
+     *
+     * Custom editors use [`CustomDocument`](#CustomDocument) as their document model instead of a [`TextDocument`](#TextDocument).
+     *
+     * You should use this type of custom editor when dealing with binary files or more complex scenarios. For simple
+     * text based documents, use [`CustomTextEditorProvider`](#CustomTextEditorProvider) instead.
+     *
+     * @param T Type of the custom document returned by this provider.
+     */
+    export interface CustomReadonlyEditorProvider<T extends CustomDocument = CustomDocument> {
+
+        /**
+         * Create a new document for a given resource.
+         *
+         * `openCustomDocument` is called when the first time an editor for a given resource is opened. The opened
+         * document is then passed to `resolveCustomEditor` so that the editor can be shown to the user.
+         *
+         * Already opened `CustomDocument` are re-used if the user opened additional editors. When all editors for a
+         * given resource are closed, the `CustomDocument` is disposed of. Opening an editor at this point will
+         * trigger another call to `openCustomDocument`.
+         *
+         * @param uri Uri of the document to open.
+         * @param openContext Additional information about the opening custom document.
+         * @param token A cancellation token that indicates the result is no longer needed.
+         *
+         * @return The custom document.
+         */
+        openCustomDocument(uri: Uri, openContext: CustomDocumentOpenContext, token: CancellationToken): Thenable<T> | T;
+
+        /**
+         * Resolve a custom editor for a given resource.
+         *
+         * This is called whenever the user opens a new editor for this `CustomEditorProvider`.
+         *
+         * @param document Document for the resource being resolved.
+         *
+         * @param webviewPanel The webview panel used to display the editor UI for this resource.
+         *
+         * During resolve, the provider must fill in the initial html for the content webview panel and hook up all
+         * the event listeners on it that it is interested in. The provider can also hold onto the `WebviewPanel` to
+         * use later for example in a command. See [`WebviewPanel`](#WebviewPanel) for additional details.
+         *
+         * @param token A cancellation token that indicates the result is no longer needed.
+         *
+         * @return Optional thenable indicating that the custom editor has been resolved.
+         */
+        resolveCustomEditor(document: T, webviewPanel: WebviewPanel, token: CancellationToken): Thenable<void> | void;
+    }
+
+    /**
+     * Provider for editable custom editors that use a custom document model.
+     *
+     * Custom editors use [`CustomDocument`](#CustomDocument) as their document model instead of a [`TextDocument`](#TextDocument).
+     * This gives extensions full control over actions such as edit, save, and backup.
+     *
+     * You should use this type of custom editor when dealing with binary files or more complex scenarios. For simple
+     * text based documents, use [`CustomTextEditorProvider`](#CustomTextEditorProvider) instead.
+     *
+     * @param T Type of the custom document returned by this provider.
+     */
+    export interface CustomEditorProvider<T extends CustomDocument = CustomDocument> extends CustomReadonlyEditorProvider<T> {
+        /**
+         * Signal that an edit has occurred inside a custom editor.
+         *
+         * This event must be fired by your extension whenever an edit happens in a custom editor. An edit can be
+         * anything from changing some text, to cropping an image, to reordering a list. Your extension is free to
+         * define what an edit is and what data is stored on each edit.
+         *
+         * Firing `onDidChange` causes Theia to mark the editors as being dirty. This is cleared when the user either
+         * saves or reverts the file.
+         *
+         * Editors that support undo/redo must fire a `CustomDocumentEditEvent` whenever an edit happens. This allows
+         * users to undo and redo the edit using Theia's standard Theia keyboard shortcuts. Theia will also mark
+         * the editor as no longer being dirty if the user undoes all edits to the last saved state.
+         *
+         * Editors that support editing but cannot use Theia's standard undo/redo mechanism must fire a `CustomDocumentContentChangeEvent`.
+         * The only way for a user to clear the dirty state of an editor that does not support undo/redo is to either
+         * `save` or `revert` the file.
+         *
+         * An editor should only ever fire `CustomDocumentEditEvent` events, or only ever fire `CustomDocumentContentChangeEvent` events.
+         */
+        readonly onDidChangeCustomDocument: Event<CustomDocumentContentChangeEvent<T>> | Event<CustomDocumentEditEvent<T>>;
+
+        /**
+         * Save a custom document.
+         *
+         * This method is invoked by Theia when the user saves a custom editor. This can happen when the user
+         * triggers save while the custom editor is active, by commands such as `save all`, or by auto save if enabled.
+         *
+         * To implement `save`, the implementer must persist the custom editor. This usually means writing the
+         * file data for the custom document to disk. After `save` completes, any associated editor instances will
+         * no longer be marked as dirty.
+         *
+         * @param document Document to save.
+         * @param cancellation Token that signals the save is no longer required (for example, if another save was triggered).
+         *
+         * @return Thenable signaling that saving has completed.
+         */
+        saveCustomDocument(document: T, cancellation: CancellationToken): Thenable<void>;
+
+        /**
+         * Save a custom document to a different location.
+         *
+         * This method is invoked by Theia when the user triggers 'save as' on a custom editor. The implementer must
+         * persist the custom editor to `destination`.
+         *
+         * When the user accepts save as, the current editor is be replaced by an non-dirty editor for the newly saved file.
+         *
+         * @param document Document to save.
+         * @param destination Location to save to.
+         * @param cancellation Token that signals the save is no longer required.
+         *
+         * @return Thenable signaling that saving has completed.
+         */
+        saveCustomDocumentAs(document: T, destination: Uri, cancellation: CancellationToken): Thenable<void>;
+
+        /**
+         * Revert a custom document to its last saved state.
+         *
+         * This method is invoked by Theia when the user triggers `File: Revert File` in a custom editor. (Note that
+         * this is only used using Theia's `File: Revert File` command and not on a `git revert` of the file).
+         *
+         * To implement `revert`, the implementer must make sure all editor instances (webviews) for `document`
+         * are displaying the document in the same state is saved in. This usually means reloading the file from the
+         * workspace.
+         *
+         * @param document Document to revert.
+         * @param cancellation Token that signals the revert is no longer required.
+         *
+         * @return Thenable signaling that the change has completed.
+         */
+        revertCustomDocument(document: T, cancellation: CancellationToken): Thenable<void>;
+    }
+
+    /**
      * Common namespace for dealing with window and editor, showing messages and user input.
      */
     export namespace window {
@@ -3792,6 +4043,44 @@ declare module '@theia/plugin' {
          * @param serializer Webview serializer.
          */
         export function registerWebviewPanelSerializer(viewType: string, serializer: WebviewPanelSerializer): Disposable;
+
+
+        /**
+         * Register a provider for custom editors for the `viewType` contributed by the `customEditors` extension point.
+         *
+         * When a custom editor is opened, Theia fires an `onCustomEditor:viewType` activation event. Your extension
+         * must register a [`CustomTextEditorProvider`](#CustomTextEditorProvider), [`CustomReadonlyEditorProvider`](#CustomReadonlyEditorProvider),
+         * [`CustomEditorProvider`](#CustomEditorProvider)for `viewType` as part of activation.
+         *
+         * @param viewType Unique identifier for the custom editor provider. This should match the `viewType` from the
+         *   `customEditors` contribution point.
+         * @param provider Provider that resolves custom editors.
+         * @param options Options for the provider.
+         *
+         * @return Disposable that unregisters the provider.
+         */
+        export function registerCustomEditorProvider(viewType: string, provider: CustomTextEditorProvider | CustomReadonlyEditorProvider | CustomEditorProvider, options?: {
+            /**
+             * Content settings for the webview panels created for this custom editor.
+             */
+            readonly webviewOptions?: WebviewPanelOptions;
+
+            /**
+             * Only applies to `CustomReadonlyEditorProvider | CustomEditorProvider`.
+             *
+             * Indicates that the provider allows multiple editor instances to be open at the same time for
+             * the same resource.
+             *
+             * By default, Theia only allows one editor instance to be open at a time for each resource. If the
+             * user tries to open a second editor instance for the resource, the first one is instead moved to where
+             * the second one was to be opened.
+             *
+             * When `supportsMultipleEditorsPerDocument` is enabled, users can split and create copies of the custom
+             * editor. In this case, the custom editor must make sure it can properly synchronize the states of all
+             * editor instances for a resource so that they are consistent.
+             */
+            readonly supportsMultipleEditorsPerDocument?: boolean;
+        }): Disposable;
 
         /**
          * Represents the current window's state.
@@ -5541,7 +5830,7 @@ declare module '@theia/plugin' {
          *
          * If the extension is running remotely, this function automatically establishes a port forwarding tunnel
          * from the local machine to `target` on the remote and returns a local uri to the tunnel. The lifetime of
-         * the port fowarding tunnel is managed by VS Code and the tunnel can be closed by the user.
+         * the port fowarding tunnel is managed by Theia and the tunnel can be closed by the user.
          *
          * Extensions should not cache the result of `asExternalUri` as the resolved uri may become invalid due to
          * a system or user action — for example, in remote cases, a user may close a port forwardng tunnel
@@ -7116,7 +7405,7 @@ declare module '@theia/plugin' {
      *
      * Kinds are a hierarchical list of identifiers separated by `.`, e.g. `"refactor.extract.function"`.
      *
-     * Code action kinds are used by VS Code for UI elements such as the refactoring context menu. Users
+     * Code action kinds are used by Theia for UI elements such as the refactoring context menu. Users
      * can also trigger code actions with a specific kind with the `editor.action.codeAction` command.
      */
     export class CodeActionKind {
@@ -7713,7 +8002,7 @@ declare module '@theia/plugin' {
          * ```
          *
          * @see [SemanticTokensBuilder](#SemanticTokensBuilder) for a helper to encode tokens as integers.
-         * *NOTE*: When doing edits, it is possible that multiple edits occur until VS Code decides to invoke the semantic tokens provider.
+         * *NOTE*: When doing edits, it is possible that multiple edits occur until Theia decides to invoke the semantic tokens provider.
          * *NOTE*: If the provider cannot temporarily compute semantic tokens, it can indicate this by throwing an error with the message 'Busy'.
          */
         provideDocumentSemanticTokens(document: TextDocument, token: CancellationToken): ProviderResult<SemanticTokens>;
@@ -8665,7 +8954,7 @@ declare module '@theia/plugin' {
     }
 
     /**
-     * A Debug Adapter Tracker is a means to track the communication between VS Code and a Debug Adapter.
+     * A Debug Adapter Tracker is a means to track the communication between Theia and a Debug Adapter.
      */
     export interface DebugAdapterTracker {
         /**
@@ -8673,11 +8962,11 @@ declare module '@theia/plugin' {
          */
         onWillStartSession?(): void;
         /**
-         * The debug adapter is about to receive a Debug Adapter Protocol message from VS Code.
+         * The debug adapter is about to receive a Debug Adapter Protocol message from Theia.
          */
         onWillReceiveMessage?(message: any): void;
         /**
-         * The debug adapter has sent a Debug Adapter Protocol message to VS Code.
+         * The debug adapter has sent a Debug Adapter Protocol message to Theia.
          */
         onDidSendMessage?(message: any): void;
         /**
@@ -8697,7 +8986,7 @@ declare module '@theia/plugin' {
     export interface DebugAdapterTrackerFactory {
         /**
          * The method 'createDebugAdapterTracker' is called at the start of a debug session in order
-         * to return a "tracker" object that provides read-access to the communication between VS Code and a debug adapter.
+         * to return a "tracker" object that provides read-access to the communication between Theia and a debug adapter.
          *
          * @param session The [debug session](#DebugSession) for which the debug adapter tracker will be used.
          * @return A [debug adapter tracker](#DebugAdapterTracker) or undefined.
@@ -8722,7 +9011,7 @@ declare module '@theia/plugin' {
         /**
          * The command or path of the debug adapter executable.
          * A command must be either an absolute path of an executable or the name of an command to be looked up via the PATH environment variable.
-         * The special value 'node' will be mapped to VS Code's built-in Node.js runtime.
+         * The special value 'node' will be mapped to Theia's built-in Node.js runtime.
          */
         readonly command: string;
 
@@ -9130,7 +9419,7 @@ declare module '@theia/plugin' {
         constructor(commandLine: string, options?: ShellExecutionOptions);
 
         /**
-         * Creates a shell execution with a command and arguments. For the real execution VS Code will
+         * Creates a shell execution with a command and arguments. For the real execution Theia will
          * construct a command line from the command and the arguments. This is subject to interpretation
          * especially when it comes to quoting. If full control over the command line is needed please
          * use the constructor that creates a `ShellExecution` with the full command line.
@@ -9530,7 +9819,7 @@ declare module '@theia/plugin' {
         export function fetchTasks(filter?: TaskFilter): PromiseLike<Task[]>;
 
         /**
-         * Executes a task that is managed by VS Code. The returned
+         * Executes a task that is managed by Theia. The returned
          * task execution can be used to terminate the task.
          *
          * @param task the task to execute
@@ -10207,7 +10496,7 @@ declare module '@theia/plugin' {
          * quickpick to select which account they would like to use.
          *
          * Currently, there are only two authentication providers that are contributed from built in extensions
-         * to VS Code that implement GitHub and Microsoft authentication: their providerId's are 'github' and 'microsoft'.
+         * to Theia that implement GitHub and Microsoft authentication: their providerId's are 'github' and 'microsoft'.
          * @param providerId The id of the provider to use
          * @param scopes A list of scopes representing the permissions requested. These are dependent on the authentication provider
          * @param options The [getSessionOptions](#GetSessionOptions) to use

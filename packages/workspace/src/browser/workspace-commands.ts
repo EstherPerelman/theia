@@ -212,16 +212,7 @@ export class WorkspaceCommandContribution implements CommandContribution {
     }
 
     registerCommands(registry: CommandRegistry): void {
-        this.openerService.getOpeners().then(openers => {
-            for (const opener of openers) {
-                const openWithCommand = WorkspaceCommands.FILE_OPEN_WITH(opener);
-                registry.registerCommand(openWithCommand, this.newUriAwareCommandHandler({
-                    execute: uri => opener.open(uri),
-                    isEnabled: uri => opener.canHandle(uri) > 0,
-                    isVisible: uri => opener.canHandle(uri) > 0 && this.areMultipleOpenHandlersPresent(openers, uri)
-                }));
-            }
-        });
+        this.registerOpenWith(registry);
         registry.registerCommand(WorkspaceCommands.NEW_FILE, this.newWorkspaceRootUriAwareCommandHandler({
             execute: uri => this.getDirectory(uri).then(parent => {
                 if (parent) {
@@ -340,6 +331,24 @@ export class WorkspaceCommandContribution implements CommandContribution {
                 isVisible: uris => this.areWorkspaceRoots(uris) && this.workspaceService.saved
             }));
         });
+    }
+
+    openers: OpenHandler[];
+    protected async registerOpenWith(registry: CommandRegistry): Promise<void> {
+        if (this.openerService.onOpenersStateChanged) {
+            this.openerService.onOpenersStateChanged(async e => {
+                this.openers = await this.openerService.getOpeners();
+            });
+        }
+        const openers = await this.openerService.getOpeners();
+        for (const opener of openers) {
+            const openWithCommand = WorkspaceCommands.FILE_OPEN_WITH(opener);
+            registry.registerCommand(openWithCommand, this.newUriAwareCommandHandler({
+                execute: uri => opener.open(uri),
+                isEnabled: uri => opener.canHandle(uri) > 0,
+                isVisible: uri => opener.canHandle(uri) > 0 && this.areMultipleOpenHandlersPresent(uri)
+            }));
+        }
     }
 
     protected newUriAwareCommandHandler(handler: UriCommandHandler<URI>): UriAwareCommandHandler<URI> {
@@ -476,9 +485,9 @@ export class WorkspaceCommandContribution implements CommandContribution {
         }
     }
 
-    protected areMultipleOpenHandlersPresent(openers: OpenHandler[], uri: URI): boolean {
+    protected areMultipleOpenHandlersPresent(uri: URI): boolean {
         let count = 0;
-        for (const opener of openers) {
+        for (const opener of this.openers) {
             if (opener.canHandle(uri) > 0) {
                 count++;
             }

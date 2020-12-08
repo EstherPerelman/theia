@@ -44,7 +44,7 @@ export namespace NavigatableWidget {
     export function is(arg: Object | undefined): arg is NavigatableWidget {
         return arg instanceof BaseWidget && Navigatable.is(arg);
     }
-    export function* getAffected<T extends Widget>(
+    export function getAffected<T extends Widget>(
         widgets: IterableIterator<T> | ArrayLike<T>,
         context: MaybeArray<URI>
     ): IterableIterator<[URI, T & NavigatableWidget]> {

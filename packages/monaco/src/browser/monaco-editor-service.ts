@@ -24,6 +24,8 @@ import { MonacoToProtocolConverter } from './monaco-to-protocol-converter';
 import ICodeEditor = monaco.editor.ICodeEditor;
 import CommonCodeEditor = monaco.editor.CommonCodeEditor;
 import IResourceInput = monaco.editor.IResourceInput;
+import { CustomEditorWidget } from './monaco-workspace';
+import { MonacoEditorModel } from './monaco-editor-model';
 
 decorate(injectable(), monaco.services.CodeEditorServiceImpl);
 
@@ -55,7 +57,13 @@ export class MonacoEditorService extends monaco.services.CodeEditorServiceImpl {
      * Monaco active editor is either focused or last focused editor.
      */
     getActiveCodeEditor(): monaco.editor.IStandaloneCodeEditor | undefined {
-        const editor = MonacoEditor.getCurrent(this.editors);
+        let editor = MonacoEditor.getCurrent(this.editors);
+        if (!editor && CustomEditorWidget.is(this.shell.activeWidget)) {
+            const model = this.shell.activeWidget.modelRef.object;
+            if (model.editorTextModel instanceof MonacoEditorModel) {
+                editor = MonacoEditor.findByDocument(this.editors, model.editorTextModel)[0];
+            }
+        }
         return editor && editor.getControl();
     }
 
